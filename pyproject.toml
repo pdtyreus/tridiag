@@ -1,0 +1,49 @@
+[project]
+name = "tridiag"
+version = "0.1.0"
+description = "High performance python solvers for tridiagonal matrices"
+authors = [
+    {name = "P. Daniel Tyreus"}
+]
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+
+dependencies = [
+    "numpy>=2.0.0,<3.0.0",
+    "numba>=0.60.0"
+]
+
+[project.optional-dependencies]
+gpu = [
+    "mlx>=0.18.0"
+]
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.9.0"
+pytest = "^9.0.2"
+matplotlib = "^3.10.8"
+scipy = "^1.14.0"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# Enable Pyflakes (F) and E4/E7/E9 (Error) codes by default.
+select = ["E", "F", "I", "N", "UP", "B", "SIM", "D"]
+ignore = []
+
+# Allow autofix for all enabled rules (when `--fix`) is provided.
+fixable = ["ALL"]
+unfixable = []
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
+[tool.ruff.lint.isort]
+known-first-party = ["tridiag"]
+
+[build-system]
+requires = ["poetry-core>=2.0.0"]
+build-backend = "poetry.core.masonry.api"
