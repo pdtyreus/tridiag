@@ -1,18 +1,27 @@
 [project]
 name = "tridiag"
 version = "0.1.0"
-description = "High performance python solvers for tridiagonal matrices"
+description = "High performance, differentiable solvers for tridiagonal systems"
 authors = [
     {name = "P. Daniel Tyreus"}
 ]
 license = {text = "MIT"}
 readme = "README.md"
 requires-python = ">=3.11,<3.13"
-
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3"
+]
 dependencies = [
     "numpy>=2.0.0,<3.0.0",
     "numba>=0.60.0"
 ]
+
+[project.urls]
+Homepage = "https://github.com/pdtyreus/tridiag"
+Issues = "https://github.com/pdtyreus/tridiag/issues"
+Benchmarks = "https://pdtyreus.github.io/numerical_methods/tridiagonal_solvers.html"
 
 [project.optional-dependencies]
 gpu = [
