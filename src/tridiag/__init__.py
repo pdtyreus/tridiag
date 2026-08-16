@@ -2,18 +2,16 @@
 
 import importlib.util
 import warnings
-from typing import Any
 
 import numpy as np
-import numpy.typing as npt
 
 from .solvers import cyclic_reduction, pcr, thomas
-from .utils import pad_system
+from .utils import ArrayLike, pad_system
 
 
 def solve(
-    a: npt.NDArray, b: npt.NDArray, c: npt.NDArray, d: npt.NDArray, method: str = "auto"
-) -> npt.NDArray | Any:
+    a: ArrayLike, b: ArrayLike, c: ArrayLike, d: ArrayLike, method: str = "auto"
+) -> ArrayLike:
     """
     Solve a tridiagonal system Ax = d.
 

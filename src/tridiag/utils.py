@@ -3,6 +3,17 @@
 import numpy as np
 import numpy.typing as npt
 
+try:
+    import mlx.core as mx
+    MLXArray = mx.array
+except ImportError:
+    class MLXArray:  # type: ignore
+        """Handle when mlx is not installed."""
+        
+        pass
+
+ArrayLike = npt.NDArray | MLXArray
+
 
 def generate_tridiagonal_system(
     n: int, seed: int = 42
@@ -39,8 +50,8 @@ def generate_tridiagonal_system(
 
 
 def pad_system(
-    a: npt.NDArray, b: npt.NDArray, c: npt.NDArray, d: npt.NDArray
-) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
+    a: ArrayLike, b: ArrayLike, c: ArrayLike, d: ArrayLike
+) -> tuple[ArrayLike, ArrayLike, ArrayLike, ArrayLike]:
     """Pad a tridiagonal system to size 2^k - 1 for Cyclic Reduction."""
     n = len(d)
     k = int(np.ceil(np.log2(n + 1)))
@@ -48,6 +59,23 @@ def pad_system(
 
     if new_n == n:
         return a, b, c, d
+
+    # Detect if we are dealing with MLX arrays
+    is_mlx = False
+    try:
+        import mlx.core as mx
+        if isinstance(a, mx.array):
+            is_mlx = True
+    except ImportError:
+        pass
+
+    if is_mlx:
+        import mlx.core as mx
+        new_a = mx.concatenate([a, mx.zeros((new_n - 1 - len(a),), dtype=a.dtype)])
+        new_b = mx.concatenate([b, mx.ones((new_n - len(b),), dtype=b.dtype)])
+        new_c = mx.concatenate([c, mx.zeros((new_n - 1 - len(c),), dtype=c.dtype)])
+        new_d = mx.concatenate([d, mx.zeros((new_n - len(d),), dtype=d.dtype)])
+        return new_a, new_b, new_c, new_d
 
     new_a = np.zeros(new_n - 1, dtype=a.dtype)
     new_b = np.ones(new_n, dtype=b.dtype)

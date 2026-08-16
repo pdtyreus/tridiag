@@ -6,6 +6,8 @@ import numpy as np
 import numpy.typing as npt
 from numba import njit, prange
 
+from ..utils import ArrayLike
+
 # --- Numba Step Functions ---
 
 
@@ -281,7 +283,7 @@ def solve_vanilla(a: npt.NDArray, b: npt.NDArray, c: npt.NDArray, d: npt.NDArray
 try:
     import mlx.core as mx
 
-    def solve_mlx(a: npt.NDArray, b: npt.NDArray, c: npt.NDArray, d: npt.NDArray) -> Any:
+    def solve_mlx(a: ArrayLike, b: ArrayLike, c: ArrayLike, d: ArrayLike) -> Any:
         """Solve Ax = d using differentiable GPU-accelerated MLX Cyclic Reduction.
 
         Automatically routes float64 inputs to the CPU stream, as Apple Silicon GPUs
@@ -304,7 +306,7 @@ try:
             The solution vector x of shape (N,).
         """
         # Detect dtype and device
-        dtype = mx.float32 if a.dtype == np.float32 else mx.float64
+        dtype = mx.float32 if a.dtype in (np.float32, mx.float32) else mx.float64
         device = mx.cpu if dtype == mx.float64 else mx.gpu
 
         with mx.stream(device):
@@ -327,9 +329,6 @@ try:
                 curr_a, curr_b, curr_c, curr_d = new_a, new_b, new_c, new_d
             x = curr_d / curr_b
             for prev_a, prev_b, prev_c, prev_d in reversed(history):
-                next_x = mx.zeros(prev_d.size, dtype=prev_d.dtype)
-                next_x[1::2] = x
-
                 rhs = prev_d[0::2]
 
                 # Subtract contribution from right neighbor
@@ -337,7 +336,7 @@ try:
                 num_c_even = c_even.size
                 rhs = mx.concatenate(
                     [
-                        rhs[:num_c_even] - c_even * next_x[1 : 1 + num_c_even * 2 : 2],
+                        rhs[:num_c_even] - c_even * x[:num_c_even],
                         rhs[num_c_even:],
                     ]
                 )
@@ -345,13 +344,19 @@ try:
                 # Subtract contribution from left neighbor
                 a_even = prev_a[1::2]
                 if a_even.size > 0:
-                    rhs = mx.concatenate([rhs[:1], rhs[1:] - a_even * next_x[1:-1:2]])
+                    rhs = mx.concatenate([rhs[:1], rhs[1:] - a_even * x[:a_even.size]])
 
-                next_x[0::2] = rhs / prev_b[0::2]
-                x = next_x
+                # Interleave even indices (rhs / prev_b[0::2]) and odd indices (x)
+                even_part = rhs / prev_b[0::2]
+                pad_size = even_part.size - x.size
+                if pad_size > 0:
+                    odd_padded = mx.concatenate([x, mx.zeros((pad_size,), dtype=x.dtype)])
+                else:
+                    odd_padded = x
+                x = mx.reshape(mx.stack([even_part, odd_padded], axis=-1), (-1,))[:prev_d.size]
             return x
 except ImportError:
 
-    def solve_mlx(a: npt.NDArray, b: npt.NDArray, c: npt.NDArray, d: npt.NDArray) -> Any:
+    def solve_mlx(a: ArrayLike, b: ArrayLike, c: ArrayLike, d: ArrayLike) -> Any:
         """Handle calls to mlx solver when mlx is not installed."""
         raise ImportError("MLX not found. Please install mlx to use solve_mlx.")

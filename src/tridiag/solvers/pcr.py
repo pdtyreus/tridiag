@@ -6,6 +6,8 @@ import numpy as np
 import numpy.typing as npt
 from numba import njit, prange
 
+from ..utils import ArrayLike
+
 # --- Numba Implementation ---
 
 
@@ -177,7 +179,7 @@ try:
         new_d = d - alpha * d_minus - beta * d_plus
         return new_a, new_b, new_c, new_d
 
-    def solve_mlx(a: npt.NDArray, b: npt.NDArray, c: npt.NDArray, d: npt.NDArray) -> Any:
+    def solve_mlx(a: ArrayLike, b: ArrayLike, c: ArrayLike, d: ArrayLike) -> Any:
         """Solve a tridiagonal system Ax = d using Parallel Cyclic Reduction (PCR) in MLX.
 
         Parameters
@@ -197,7 +199,7 @@ try:
             The solution vector x of shape (N,).
         """
         n = b.shape[0]
-        dtype = mx.float32 if a.dtype == np.float32 else mx.float64
+        dtype = mx.float32 if a.dtype in (np.float32, mx.float32) else mx.float64
         device = mx.cpu if dtype == mx.float64 else mx.gpu
         with mx.stream(device):
             curr_b = mx.array(b, dtype=dtype)
@@ -218,6 +220,6 @@ try:
 
 except ImportError:
 
-    def solve_mlx(a: npt.NDArray, b: npt.NDArray, c: npt.NDArray, d: npt.NDArray) -> Any:
+    def solve_mlx(a: ArrayLike, b: ArrayLike, c: ArrayLike, d: ArrayLike) -> Any:
         """Handle calls to mlx solver when mlx is not installed."""
         raise ImportError("MLX not found. Please install mlx to use pcr_mlx.")

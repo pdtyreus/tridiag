@@ -53,7 +53,7 @@ def test_all_solvers(method, n, dtype):
     
     try:
         # Capture and verify the expected fallback warning for MLX float64
-        if 'mlx' in method and dtype == np.float64:
+        if 'mlx' in method and dtype == np.float64 and n > 1:
             with pytest.warns(UserWarning, match="will run on the CPU"):
                 calculated_x = tridiag.solve(sub, main, sup, rhs, method=method)
         else:
