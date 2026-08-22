@@ -134,3 +134,8 @@ If you want to contribute or run the benchmarks locally, you can set up the envi
    # Massive systems (up to N=134M)
    poetry run python benchmarks/run_benchmarks.py --massive
    ```
+
+5. **Run Examples:**
+   ```bash
+   poetry run python examples/heat_conduction_1d.py
+   ```
