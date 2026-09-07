@@ -25,7 +25,12 @@ def benchmark_solver(method, sub, main, sup, rhs, iterations=5):
     if method == "thomas_scipy":
         _ = solve_scipy(sub, main, sup, rhs)
     else:
-        _ = tridiag.solve(sub, main, sup, rhs, method=method)
+        res = tridiag.solve(sub, main, sup, rhs, method=method)
+        if type(res).__module__.startswith("mlx"):
+            import mlx.core as mx
+            mx.eval(res)
+        else:
+            pass
 
     # Time the runs
     times = []
