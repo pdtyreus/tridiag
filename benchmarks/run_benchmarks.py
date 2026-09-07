@@ -78,7 +78,19 @@ def run_suite(sizes, methods, dtype=np.float32):
                 continue
 
             try:
-                t = benchmark_solver(method, sub, main, sup, rhs)
+                if method == 'cr_mlx':
+                    # in an MLX system we would most likely be using
+                    # MLX arrays already, so it's not fair to force
+                    # conversion from NumPy in the benchmark time
+                    import mlx.core as mx
+                    subx = mx.array(sub, dtype=mx.float32)
+                    mainx = mx.array(main, dtype=mx.float32)
+                    supx = mx.array(sup, dtype=mx.float32)
+                    rhsx = mx.array(rhs, dtype=mx.float32)
+                    mx.eval(subx, mainx, supx, rhsx)
+                    t = benchmark_solver(method, subx, mainx, supx, rhsx)
+                else:
+                    t = benchmark_solver(method, sub, main, sup, rhs)
                 results.append(f"{t:>17.6f}")
             except Exception:
                 results.append(f"{'error':>17}")
