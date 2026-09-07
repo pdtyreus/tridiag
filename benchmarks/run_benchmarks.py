@@ -57,7 +57,7 @@ def run_suite(sizes, methods, dtype=np.float32):
     """Run the benchmark suite."""
     print(f"\nRunning Benchmarks (dtype={dtype.__name__})")
     print("Values are mean execution time (s)")
-    header = f"{'Size (N)':>12} | " + " | ".join([f"{m:>14}" for m in methods])
+    header = f"{'Size (N)':>12} | " + " | ".join([f"{m:>17}" for m in methods])
     print("-" * len(header))
     print(header)
     print("-" * len(header))
@@ -79,9 +79,9 @@ def run_suite(sizes, methods, dtype=np.float32):
 
             try:
                 t = benchmark_solver(method, sub, main, sup, rhs)
-                results.append(f"{t:>14.6f}")
+                results.append(f"{t:>17.6f}")
             except Exception:
-                results.append(f"{'error':>14}")
+                results.append(f"{'error':>17}")
 
         print(row + " | ".join(results))
 
@@ -90,6 +90,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Benchmark tridiag solvers.")
     parser.add_argument("--quick", action="store_true", help="Run only small sizes.")
     parser.add_argument("--massive", action="store_true", help="Run up to N=100M.")
+    parser.add_argument("--mlx", action="store_true", help="Include MLX benchmark.")
     args = parser.parse_args()
 
     if args.quick:
@@ -99,6 +100,9 @@ if __name__ == "__main__":
     else:
         sizes = [2**k - 1 for k in [10, 15, 18, 21]]
 
-    methods = ["thomas_scipy", "thomas_numba", "cr_numpy", "cr_numba", "cr_mlx"]
+    methods = ["thomas_scipy", "thomas_numba", "cr_numpy", "cr_numba", "cr_numba_parallel"]
+
+    if args.mlx:
+        methods += ['cr_mlx']
 
     run_suite(sizes, methods, dtype=np.float32)

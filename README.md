@@ -133,6 +133,9 @@ If you want to contribute or run the benchmarks locally, you can set up the envi
 
    # Massive systems (up to N=134M)
    poetry run python benchmarks/run_benchmarks.py --massive
+
+   # Include MLX solver
+   poetry run python benchmarks/run_benchmarks.py --massive --mlx
    ```
 
 5. **Run Examples:**
