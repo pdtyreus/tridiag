@@ -1,3 +1,5 @@
+"""Benchmark suite for tridiagonal solver implementations."""
+
 import argparse
 import time
 
@@ -18,6 +20,7 @@ def solve_scipy(a, b, c, d):
 
 
 def benchmark_solver(method, sub, main, sup, rhs, iterations=5):
+    """Solves using the supplied method with warmup."""
     # Warm-up
     if method == "thomas_scipy":
         _ = solve_scipy(sub, main, sup, rhs)
@@ -34,14 +37,21 @@ def benchmark_solver(method, sub, main, sup, rhs, iterations=5):
             res = tridiag.solve(sub, main, sup, rhs, method=method)
         # Ensure result is computed (important for lazy frameworks like MLX)
         if hasattr(res, "tolist"):
-            _ = res.tolist()
+            # If MLX, force graph evaluation on the device without Python heap object conversion
+            if type(res).__module__.startswith("mlx"):
+                import mlx.core as mx
+                mx.eval(res)
+            else:
+                pass  # NumPy is already evaluated
         times.append(time.perf_counter() - start)
 
     return np.mean(times)
 
 
 def run_suite(sizes, methods, dtype=np.float32):
+    """Run the benchmark suite."""
     print(f"\nRunning Benchmarks (dtype={dtype.__name__})")
+    print("Values are mean execution time (s)")
     header = f"{'Size (N)':>12} | " + " | ".join([f"{m:>14}" for m in methods])
     print("-" * len(header))
     print(header)
