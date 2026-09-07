@@ -283,6 +283,27 @@ def solve_vanilla(a: npt.NDArray, b: npt.NDArray, c: npt.NDArray, d: npt.NDArray
 try:
     import mlx.core as mx
 
+    @mx.compile
+    def _reduce_step_mlx(curr_a, curr_b, curr_c, curr_d):
+        # Length m
+        alpha = curr_a[::2] / curr_b[:-1:2]
+        beta  = curr_c[1::2] / curr_b[2::2]
+        # Length m
+        new_b = curr_b[1::2] - alpha * curr_c[::2] - beta * curr_a[1::2]
+        new_d = curr_d[1::2] - alpha * curr_d[:-1:2] - beta * curr_d[2::2]
+        # Length m - 1
+        new_a = -alpha[1:] * curr_a[1::2][:-1]
+        new_c = -beta[:-1] * curr_c[2::2]
+        return new_a, new_b, new_c, new_d
+
+    @mx.compile
+    def _substitute_step_mlx(prev_a, prev_b, prev_c, prev_d, x):
+        c_contrib = mx.pad(prev_c[::2] * x, (0, 1))
+        a_contrib = mx.pad(prev_a[1::2] * x, (1, 0))
+        even_part = (prev_d[::2] - c_contrib - a_contrib) / prev_b[::2]
+        odd_padded = mx.pad(x, (0, 1))
+        return mx.stack([even_part, odd_padded], axis=-1).reshape(-1)[:-1]
+
     def solve_mlx(a: ArrayLike, b: ArrayLike, c: ArrayLike, d: ArrayLike) -> Any:
         """Solve Ax = d using differentiable GPU-accelerated MLX Cyclic Reduction.
 
@@ -319,43 +340,15 @@ try:
             history = []
             while curr_d.size > 1:
                 history.append((curr_a, curr_b, curr_c, curr_d))
-                # Length m
-                alpha = curr_a[::2] / curr_b[:-1:2]
-                beta  = curr_c[1::2] / curr_b[2::2]
-                # Length m
-                new_b = curr_b[1::2] - alpha * curr_c[::2] - beta * curr_a[1::2]
-                new_d = curr_d[1::2] - alpha * curr_d[:-1:2] - beta * curr_d[2::2]
-                # Length m - 1
-                new_a = -alpha[1:] * curr_a[1::2][:-1]
-                new_c = -beta[:-1] * curr_c[2::2]
-                curr_a, curr_b, curr_c, curr_d = new_a, new_b, new_c, new_d
-            x = curr_d / curr_b
-            for prev_a, prev_b, prev_c, prev_d in reversed(history):
-                rhs = prev_d[0::2]
-
-                # Subtract contribution from right neighbor
-                c_even = prev_c[0::2]
-                num_c_even = c_even.size
-                rhs = mx.concatenate(
-                    [
-                        rhs[:num_c_even] - c_even * x[:num_c_even],
-                        rhs[num_c_even:],
-                    ]
+                # reduction in compiled operation
+                curr_a, curr_b, curr_c, curr_d = _reduce_step_mlx(
+                    curr_a, curr_b, curr_c, curr_d
                 )
 
-                # Subtract contribution from left neighbor
-                a_even = prev_a[1::2]
-                if a_even.size > 0:
-                    rhs = mx.concatenate([rhs[:1], rhs[1:] - a_even * x[:a_even.size]])
-
-                # Interleave even indices (rhs / prev_b[0::2]) and odd indices (x)
-                even_part = rhs / prev_b[0::2]
-                pad_size = even_part.size - x.size
-                if pad_size > 0:
-                    odd_padded = mx.concatenate([x, mx.zeros((pad_size,), dtype=x.dtype)])
-                else:
-                    odd_padded = x
-                x = mx.reshape(mx.stack([even_part, odd_padded], axis=-1), (-1,))[:prev_d.size]
+            x = curr_d / curr_b
+            for prev_a, prev_b, prev_c, prev_d in reversed(history):
+                # substitution in compiled operation
+                x = _substitute_step_mlx(prev_a, prev_b, prev_c, prev_d, x)
             return x
 except ImportError:
 
