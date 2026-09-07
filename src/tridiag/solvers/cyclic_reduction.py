@@ -319,13 +319,15 @@ try:
             history = []
             while curr_d.size > 1:
                 history.append((curr_a, curr_b, curr_c, curr_d))
-                odd = mx.arange(1, curr_d.size, 2)
-                alpha = curr_a[odd - 1] / curr_b[odd - 1]
-                beta = curr_c[odd] / curr_b[odd + 1]
-                new_b = curr_b[odd] - alpha * curr_c[odd - 1] - beta * curr_a[odd]
-                new_d = curr_d[odd] - alpha * curr_d[odd - 1] - beta * curr_d[odd + 1]
-                new_a = -alpha[1:] * curr_a[odd[1:] - 2]
-                new_c = -beta[:-1] * curr_c[odd[:-1] + 1]
+                # Length m
+                alpha = curr_a[::2] / curr_b[:-1:2]
+                beta  = curr_c[1::2] / curr_b[2::2]
+                # Length m
+                new_b = curr_b[1::2] - alpha * curr_c[::2] - beta * curr_a[1::2]
+                new_d = curr_d[1::2] - alpha * curr_d[:-1:2] - beta * curr_d[2::2]
+                # Length m - 1
+                new_a = -alpha[1:] * curr_a[1::2][:-1]
+                new_c = -beta[:-1] * curr_c[2::2]
                 curr_a, curr_b, curr_c, curr_d = new_a, new_b, new_c, new_d
             x = curr_d / curr_b
             for prev_a, prev_b, prev_c, prev_d in reversed(history):
