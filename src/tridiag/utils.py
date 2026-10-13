@@ -48,6 +48,75 @@ def generate_tridiagonal_system(
 
     return sub_diag, main_diag, super_diag, rhs, true_x
 
+def generate_tridiagonal_batch_system(
+    m: int, n: int, shared_diagonals: bool = False, seed: int = 42
+) -> tuple[
+    npt.NDArray[np.float64],
+    npt.NDArray[np.float64],
+    npt.NDArray[np.float64],
+    npt.NDArray[np.float64],
+    npt.NDArray[np.float64],
+]:
+    """Generate a batch of M diagonally dominant tridiagonal systems T_m x_m = d_m.
+
+    Parameters
+    ----------
+    m : int
+        Number of systems in the batch.
+    n : int
+        Size of each system.
+    shared_diagonals : bool
+        If True, a, b, c are 1D vectors shared across all M systems.
+        If False, a, b, c are 2D arrays with independent values for each system.
+    seed : int
+        Random seed for reproducibility.
+
+    Returns
+    -------
+    (sub_diag, main_diag, super_diag, rhs, true_x)
+    """
+    np.random.seed(seed)
+
+    true_x = np.random.rand(m, n)
+
+    if shared_diagonals:
+        # 1D diagonals broadcast across M
+        #
+        # Some real systems will uniform medium will have the same tridiagonal maxtrix
+        # An example is heat conduction with constant conductivity and grid spacing
+        
+        sub_diag = np.random.rand(n - 1)
+        main_diag = np.random.rand(n)
+        super_diag = np.random.rand(n - 1)
+
+        # Force diagonal dominance
+        main_diag += (np.append(sub_diag, 0) + np.insert(super_diag, 0, 0)) + 0.1
+
+        # Calculate rhs = T @ true_x (vectorized across M)
+        rhs = main_diag * true_x
+        rhs[:, :-1] += super_diag * true_x[:, 1:]
+        rhs[:, 1:] += sub_diag * true_x[:, :-1]
+    else:
+        # Fully independent 2D diagonals per system
+        #
+        # This is a more rigorous test where every system has different coefficients
+        
+        sub_diag = np.random.rand(m, n - 1)
+        main_diag = np.random.rand(m, n)
+        super_diag = np.random.rand(m, n - 1)
+
+        # Force diagonal dominance along axis=1
+        main_diag += (
+            np.pad(sub_diag, ((0, 0), (0, 1))) +
+            np.pad(super_diag, ((0, 0), (1, 0))) + 0.1
+        )
+
+        # Calculate rhs = T_m @ true_x_m (vectorized across M)
+        rhs = main_diag * true_x
+        rhs[:, :-1] += super_diag * true_x[:, 1:]
+        rhs[:, 1:] += sub_diag * true_x[:, :-1]
+
+    return sub_diag, main_diag, super_diag, rhs, true_x
 
 def pad_system(
     a: ArrayLike, b: ArrayLike, c: ArrayLike, d: ArrayLike

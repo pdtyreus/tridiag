@@ -9,19 +9,66 @@ from .solvers import cyclic_reduction, pcr, thomas
 from .utils import ArrayLike, pad_system
 
 
-def solve(
+def _solve_batch(
+    a: ArrayLike,
+    b: ArrayLike,
+    c: ArrayLike,
+    d: ArrayLike,
+    axis: int = -1,
+    method: str = "auto",
+) -> ArrayLike:
+    """Solve multidimensional / batched tridiagonal systems."""
+    ndim = d.ndim
+    if axis < -ndim or axis >= ndim:
+        raise ValueError(f"axis {axis} is out of bounds for array of dimension {ndim}")
+    # 1. Normalize target axis to the last dimension (-1)
+    axis_norm = axis if axis >= 0 else axis + ndim
+    need_moveaxis = axis_norm != (ndim - 1)
+    if need_moveaxis:
+        d = np.moveaxis(d, axis_norm, -1)
+        if getattr(a, "ndim", 1) == ndim:
+            a = np.moveaxis(a, axis_norm, -1)
+        if getattr(b, "ndim", 1) == ndim:
+            b = np.moveaxis(b, axis_norm, -1)
+        if getattr(c, "ndim", 1) == ndim:
+            c = np.moveaxis(c, axis_norm, -1)
+    orig_shape = d.shape
+    n = orig_shape[-1]
+    if n == 0:
+        raise ValueError("System must have size N >= 1.")
+    if n == 1:
+        res = d / b
+        return np.moveaxis(res, -1, axis_norm) if need_moveaxis else res
+    # 2. Flatten any leading batch dimensions to (M, N)
+    batch_shape = orig_shape[:-1]
+    m = int(np.prod(batch_shape))
+    d_2d = d.reshape((m, n))
+    a_2d = a.reshape((m, n - 1)) if getattr(a, "ndim", 1) == ndim else a
+    b_2d = b.reshape((m, n)) if getattr(b, "ndim", 1) == ndim else b
+    c_2d = c.reshape((m, n - 1)) if getattr(c, "ndim", 1) == ndim else c
+    # 3. Method dispatch
+    batch_solvers = {
+        "auto": thomas.solve_numba_batch,
+        "thomas_numba": thomas.solve_numba_batch,
+        "thomas_numba_batch": thomas.solve_numba_batch,
+    }
+    if method not in batch_solvers:
+        raise ValueError(
+            f"Method '{method}' is not supported for batched/multidimensional inputs. "
+            f"Available: {list(batch_solvers.keys())}"
+        )
+    x_2d = batch_solvers[method](a_2d, b_2d, c_2d, d_2d)
+    # 4. Reshape back to original batch shape
+    x = x_2d.reshape(orig_shape)
+    # 5. Restore original axis position
+    if need_moveaxis:
+        x = np.moveaxis(x, -1, axis_norm)
+    return x
+
+def _solve(
     a: ArrayLike, b: ArrayLike, c: ArrayLike, d: ArrayLike, method: str = "auto"
 ) -> ArrayLike:
-    """
-    Solve a tridiagonal system Ax = d.
-
-    Parameters
-    ----------
-    a, b, c : Diagonals of the matrix.
-    d       : Right-hand side.
-    method  : 'auto', 'thomas_numba', 'cr_numba', 'cr_numba_parallel',
-              'cr_mlx', 'pcr_numba', 'pcr_mlx'
-    """
+    """Solve a single tridiagonal system."""
     n = len(d)
     if n == 0:
         raise ValueError("System must have size N >= 1.")
@@ -97,5 +144,25 @@ def solve(
 
     return x[:n]
 
+
+def solve(
+    a: ArrayLike, b: ArrayLike, c: ArrayLike, d: ArrayLike, axis:int = -1, method: str = "auto"
+) -> ArrayLike:
+    """
+    Solve a tridiagonal system Ax = d.
+
+    Parameters
+    ----------
+    a, b, c : Diagonals of the matrix.
+    d       : Right-hand side.
+    axis    : Dimension of input arrays to use
+    method  : 'auto', 'thomas_numba', 'cr_numba', 'cr_numba_parallel',
+              'cr_mlx', 'pcr_numba', 'pcr_mlx'
+    """
+        # Route to batch solver if input is multidimensional
+    if getattr(d, "ndim", 1) > 1:
+        return _solve_batch(a, b, c, d, axis=axis, method=method)
+    else:
+        return _solve(a,b,c,d,method=method)
 
 __all__ = ["solve", "thomas", "cyclic_reduction", "pcr", "utils"]
