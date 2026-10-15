@@ -31,7 +31,7 @@ BATCH_METHODS = [
 ]
 
 # Sizes to test: small, medium, and non-power-of-2 for CR padding
-SIZES = [1, 2, 3, 15, 127, 100, 1024]
+SIZES = [2, 3, 15, 127, 100, 1024]
 
 
 @pytest.mark.parametrize("method", SEQUENTIAL_METHODS)
@@ -54,14 +54,14 @@ def test_sequential_solvers(method, n, dtype):
     sup = sup.astype(dtype)
     rhs = rhs.astype(dtype)
     true_x = true_x.astype(dtype)
-    
+
     try:
-        # Capture and verify the expected fallback warning for MLX float64
-        if 'mlx' in method and dtype == np.float64 and n > 1:
-            with pytest.warns(UserWarning, match="will run on the CPU"):
-                calculated_x = tridiag.solve(sub, main, sup, rhs, method=method)
-        else:
-            calculated_x = tridiag.solve(sub, main, sup, rhs, method=method)
+        # Verify that MLX methods reject float64 with a clear TypeError
+        if 'mlx' in method and dtype == np.float64:
+            with pytest.raises(TypeError, match="MLX solvers require 'float32'"):
+                tridiag.solve(sub, main, sup, rhs, method=method)
+            return  # Successfully verified the error; no solution to check
+        calculated_x = tridiag.solve(sub, main, sup, rhs, method=method)
     except ImportError as e:
         if "MLX" in str(e):
             pytest.skip("MLX not installed")

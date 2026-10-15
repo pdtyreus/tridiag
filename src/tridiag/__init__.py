@@ -34,11 +34,10 @@ def _solve_batch(
             c = np.moveaxis(c, axis_norm, -1)
     orig_shape = d.shape
     n = orig_shape[-1]
-    if n == 0:
-        raise ValueError("System must have size N >= 1.")
-    if n == 1:
-        res = d / b
-        return np.moveaxis(res, -1, axis_norm) if need_moveaxis else res
+    
+    # Validate system size along the solve axis
+    if n < 2:
+        raise ValueError(f"Tridiagonal systems must have size N >= 2 (received N={n}).")
     # 2. Flatten any leading batch dimensions to (M, N)
     batch_shape = orig_shape[:-1]
     m = int(np.prod(batch_shape))
@@ -57,7 +56,8 @@ def _solve_batch(
             f"Method '{method}' is not supported for batched/multidimensional inputs. "
             f"Available: {list(batch_solvers.keys())}"
         )
-    x_2d = batch_solvers[method](a_2d, b_2d, c_2d, d_2d)
+    solver_func = batch_solvers[method]
+    x_2d = solver_func(a_2d, b_2d, c_2d, d_2d)
     # 4. Reshape back to original batch shape
     x = x_2d.reshape(orig_shape)
     # 5. Restore original axis position
@@ -69,11 +69,10 @@ def _solve(
     a: ArrayLike, b: ArrayLike, c: ArrayLike, d: ArrayLike, method: str = "auto"
 ) -> ArrayLike:
     """Solve a single tridiagonal system."""
+
     n = len(d)
-    if n == 0:
-        raise ValueError("System must have size N >= 1.")
-    if n == 1:
-        return d / b
+    if n < 2:
+        raise ValueError(f"Tridiagonal systems must have size N >= 2 (received N={n}).")
 
     # The input dtype will be a NumPy dtype (e.g. np.float32 or np.float64)
     input_dtype = a.dtype
@@ -104,13 +103,6 @@ def _solve(
             x = cyclic_reduction.solve_numba(a, b, c, d)
     else:
         # Explicit methods
-        if "mlx" in method and input_dtype == np.float64:
-            warnings.warn(
-                f"Method '{method}' with float64 will run on the CPU (MLX fallback). "
-                "For better float64 performance, use 'cr_numba' or 'thomas_numba'.",
-                UserWarning,
-                stacklevel=2,
-            )
 
         solvers = {
             "thomas_vanilla": thomas.solve_vanilla,
@@ -159,7 +151,7 @@ def solve(
     method  : 'auto', 'thomas_numba', 'cr_numba', 'cr_numba_parallel',
               'cr_mlx', 'pcr_numba', 'pcr_mlx'
     """
-        # Route to batch solver if input is multidimensional
+    # Route to batch solver if input is multidimensional
     if getattr(d, "ndim", 1) > 1:
         return _solve_batch(a, b, c, d, axis=axis, method=method)
     else:

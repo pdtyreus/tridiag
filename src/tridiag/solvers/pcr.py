@@ -199,8 +199,16 @@ try:
             The solution vector x of shape (N,).
         """
         n = b.shape[0]
-        dtype = mx.float32 if a.dtype in (np.float32, mx.float32) else mx.float64
-        device = mx.cpu if dtype == mx.float64 else mx.gpu
+        if d.dtype in (np.float64, mx.float64):
+            raise TypeError(
+                "MLX solvers require 'float32' for Apple Silicon GPU acceleration. "
+                "Metal GPUs do not support 64-bit floating point (float64).\n"
+                "  - To use the GPU: cast your inputs to float32 (e.g. `d.astype(np.float32)`).\n"
+                "  - To use float64: use the optimized CPU solver (`method='pcr_numba'`)."
+            )
+
+        dtype = mx.float32
+        device = mx.gpu
         with mx.stream(device):
             curr_b = mx.array(b, dtype=dtype)
             curr_d = mx.array(d, dtype=dtype)

@@ -307,8 +307,8 @@ try:
     def solve_mlx(a: ArrayLike, b: ArrayLike, c: ArrayLike, d: ArrayLike) -> Any:
         """Solve Ax = d using differentiable GPU-accelerated MLX Cyclic Reduction.
 
-        Automatically routes float64 inputs to the CPU stream, as Apple Silicon GPUs
-        only natively support float32/float16.
+        Apple Silicon GPUs only natively support float32/float16, so a TypeError
+        is raised if the input arrays are float64
 
         Parameters
         ----------
@@ -327,8 +327,17 @@ try:
             The solution vector x of shape (N,).
         """
         # Detect dtype and device
-        dtype = mx.float32 if a.dtype in (np.float32, mx.float32) else mx.float64
-        device = mx.cpu if dtype == mx.float64 else mx.gpu
+
+        if d.dtype in (np.float64, mx.float64):
+            raise TypeError(
+                "MLX solvers require 'float32' for Apple Silicon GPU acceleration. "
+                "Metal GPUs do not support 64-bit floating point (float64).\n"
+                "  - To use the GPU: cast your inputs to float32 (e.g. `d.astype(np.float32)`).\n"
+                "  - To use float64: use the optimized CPU solver (`method='thomas_numba'`)."
+            )
+
+        dtype = mx.float32
+        device = mx.gpu
 
         with mx.stream(device):
             curr_a, curr_b, curr_c, curr_d = (
