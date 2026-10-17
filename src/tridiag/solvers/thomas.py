@@ -160,34 +160,29 @@ try:
         is_b_1d = b.ndim == 1
         is_c_1d = c.ndim == 1
 
-        def get_a(i):
-            return a[i] if is_a_1d else a[:, i]
-
-        def get_b(i):
-            return b[i] if is_b_1d else b[:, i]
-
-        def get_c(i):
-            return c[i] if is_c_1d else c[:, i]
+        # Transpose to (N, M) so that row i is a contiguous 1D array of length M
+        # This avoids striding operations
+        # .T is overloaded to call the native MLX transpose operation
+        d_T = d.T
+        b_T = b if is_b_1d else b.T
+        a_T = a if is_a_1d else a.T
+        c_T = c if is_c_1d else c.T
 
         # Forward Elimination
-        b0 = get_b(0)
-        cp = [get_c(0) / b0]
-        dp = [d[:, 0] / b0]
-
+        cp = [c_T[0] / b_T[0]]
+        dp = [d_T[0] / b_T[0]]
         for i in range(1, n - 1):
-            den = get_b(i) - get_a(i - 1) * cp[-1]
-            cp.append(get_c(i) / den)
-            dp.append((d[:, i] - get_a(i - 1) * dp[-1]) / den)
-
-        den_last = get_b(n - 1) - get_a(n - 2) * cp[-1]
-        dp.append((d[:, n - 1] - get_a(n - 2) * dp[-1]) / den_last)
+            den = b_T[i] - a_T[i - 1] * cp[-1]
+            cp.append(c_T[i] / den)
+            dp.append((d_T[i] - a_T[i - 1] * dp[-1]) / den)
+        den_last = b_T[n - 1] - a_T[n - 2] * cp[-1]
+        dp.append((d_T[n - 1] - a_T[n - 2] * dp[-1]) / den_last)
 
         # Back Substitution
         x_rev = [dp[-1]]
         for i in range(n - 2, -1, -1):
             x_prev = dp[i] - cp[i] * x_rev[-1]
             x_rev.append(x_prev)
-
         return mx.stack(x_rev[::-1], axis=-1)
 
     def solve_mlx_batch(
