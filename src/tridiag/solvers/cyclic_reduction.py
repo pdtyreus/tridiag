@@ -327,38 +327,32 @@ try:
             The solution vector x of shape (N,).
         """
         # Detect dtype and device
-
         if d.dtype in (np.float64, mx.float64):
             raise TypeError(
                 "MLX solvers require 'float32' for Apple Silicon GPU acceleration. "
                 "Metal GPUs do not support 64-bit floating point (float64).\n"
                 "  - To use the GPU: cast your inputs to float32 (e.g. `d.astype(np.float32)`).\n"
-                "  - To use float64: use the optimized CPU solver (`method='thomas_numba'`)."
+                "  - To use float64: use the optimized CPU solver (`method='cr_numba'`)."
             )
 
-        dtype = mx.float32
-        device = mx.gpu
+        curr_a = mx.array(a, dtype=mx.float32)
+        curr_b = mx.array(b, dtype=mx.float32)
+        curr_c = mx.array(c, dtype=mx.float32)
+        curr_d = mx.array(d, dtype=mx.float32)
 
-        with mx.stream(device):
-            curr_a, curr_b, curr_c, curr_d = (
-                mx.array(a, dtype=dtype),
-                mx.array(b, dtype=dtype),
-                mx.array(c, dtype=dtype),
-                mx.array(d, dtype=dtype),
+        history = []
+        while curr_d.size > 1:
+            history.append((curr_a, curr_b, curr_c, curr_d))
+            # reduction in compiled operation
+            curr_a, curr_b, curr_c, curr_d = _reduce_step_mlx(
+                curr_a, curr_b, curr_c, curr_d
             )
-            history = []
-            while curr_d.size > 1:
-                history.append((curr_a, curr_b, curr_c, curr_d))
-                # reduction in compiled operation
-                curr_a, curr_b, curr_c, curr_d = _reduce_step_mlx(
-                    curr_a, curr_b, curr_c, curr_d
-                )
 
-            x = curr_d / curr_b
-            for prev_a, prev_b, prev_c, prev_d in reversed(history):
-                # substitution in compiled operation
-                x = _substitute_step_mlx(prev_a, prev_b, prev_c, prev_d, x)
-            return x
+        x = curr_d / curr_b
+        for prev_a, prev_b, prev_c, prev_d in reversed(history):
+            # substitution in compiled operation
+            x = _substitute_step_mlx(prev_a, prev_b, prev_c, prev_d, x)
+        return x
 except ImportError:
 
     def solve_mlx(a: ArrayLike, b: ArrayLike, c: ArrayLike, d: ArrayLike) -> Any:
