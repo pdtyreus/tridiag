@@ -1,12 +1,11 @@
 """Solvers for tridiagonal systems."""
 
 import importlib.util
-import warnings
 
 import numpy as np
 
 from .solvers import cyclic_reduction, pcr, thomas
-from .utils import ArrayLike, pad_system
+from .utils import HAS_MLX, ArrayLike, is_float32, moveaxis, pad_system
 
 
 def _solve_batch(
@@ -25,20 +24,18 @@ def _solve_batch(
     axis_norm = axis if axis >= 0 else axis + ndim
     need_moveaxis = axis_norm != (ndim - 1)
     if need_moveaxis:
-        d = np.moveaxis(d, axis_norm, -1)
+        d = moveaxis(d, axis_norm, -1)
         if getattr(a, "ndim", 1) == ndim:
-            a = np.moveaxis(a, axis_norm, -1)
+            a = moveaxis(a, axis_norm, -1)
         if getattr(b, "ndim", 1) == ndim:
-            b = np.moveaxis(b, axis_norm, -1)
+            b = moveaxis(b, axis_norm, -1)
         if getattr(c, "ndim", 1) == ndim:
-            c = np.moveaxis(c, axis_norm, -1)
+            c = moveaxis(c, axis_norm, -1)
     orig_shape = d.shape
     n = orig_shape[-1]
-    
-    # Validate system size along the solve axis
     if n < 2:
         raise ValueError(f"Tridiagonal systems must have size N >= 2 (received N={n}).")
-    # 2. Flatten any leading batch dimensions to (M, N)
+    # 2. Flatten leading dimensions to (M, N)
     batch_shape = orig_shape[:-1]
     m = int(np.prod(batch_shape))
     d_2d = d.reshape((m, n))
@@ -47,29 +44,34 @@ def _solve_batch(
     c_2d = c.reshape((m, n - 1)) if getattr(c, "ndim", 1) == ndim else c
     # 3. Method dispatch
     batch_solvers = {
-        "auto": thomas.solve_numba_batch,
         "thomas_numba": thomas.solve_numba_batch,
         "thomas_numba_batch": thomas.solve_numba_batch,
+        "thomas_mlx": thomas.solve_mlx_batch,
+        "thomas_mlx_batch": thomas.solve_mlx_batch,
     }
-    if method not in batch_solvers:
+    if method == "auto":
+        if (HAS_MLX and is_float32(d)):
+            solver_func = thomas.solve_mlx_batch  
+        else :
+            solver_func = thomas.solve_numba_batch
+    elif method in batch_solvers:
+        solver_func = batch_solvers[method]
+    else:
         raise ValueError(
             f"Method '{method}' is not supported for batched/multidimensional inputs. "
-            f"Available: {list(batch_solvers.keys())}"
+            f"Available: {list(batch_solvers.keys()) + ['auto']}"
         )
-    solver_func = batch_solvers[method]
     x_2d = solver_func(a_2d, b_2d, c_2d, d_2d)
-    # 4. Reshape back to original batch shape
+    # 4. Reshape back and restore axis
     x = x_2d.reshape(orig_shape)
-    # 5. Restore original axis position
     if need_moveaxis:
-        x = np.moveaxis(x, -1, axis_norm)
+        x = moveaxis(x, -1, axis_norm)
     return x
 
 def _solve(
     a: ArrayLike, b: ArrayLike, c: ArrayLike, d: ArrayLike, method: str = "auto"
 ) -> ArrayLike:
     """Solve a single tridiagonal system."""
-
     n = len(d)
     if n < 2:
         raise ValueError(f"Tridiagonal systems must have size N >= 2 (received N={n}).")
@@ -121,18 +123,6 @@ def _solve(
             raise ValueError(f"Unknown method: {method}. Available: {list(solvers.keys())}")
 
         x = solvers[method](a, b, c, d)
-
-    # Final Result Handling (including padding removal)
-    if has_mlx and hasattr(x, "tolist"):  # Result is an MLX array
-        import mlx.core as mx
-
-        # Inside MLX block, use MLX dtypes
-        if x.dtype == mx.float64:
-            with mx.stream(mx.cpu):
-                return x[:n]
-        else:
-            with mx.stream(mx.gpu):
-                return x[:n]
 
     return x[:n]
 

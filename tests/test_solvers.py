@@ -27,7 +27,8 @@ SEQUENTIAL_METHODS = [
 ]
 
 BATCH_METHODS = [
-    'thomas_numba'
+    'thomas_numba',
+    'thomas_mlx'
 ]
 
 # Sizes to test: small, medium, and non-power-of-2 for CR padding
@@ -107,12 +108,12 @@ def test_batch_solvers(method, n, dtype):
     true_x = true_x.astype(dtype)
     
     try:
-        # Capture and verify the expected fallback warning for MLX float64
-        if 'mlx' in method and dtype == np.float64 and n > 1:
-            with pytest.warns(UserWarning, match="will run on the CPU"):
-                calculated_x = tridiag.solve(sub, main, sup, rhs, method=method)
-        else:
-            calculated_x = tridiag.solve(sub, main, sup, rhs, method=method)
+        # Verify that MLX methods reject float64 with a clear TypeError
+        if 'mlx' in method and dtype == np.float64:
+            with pytest.raises(TypeError, match="MLX solvers require 'float32'"):
+                tridiag.solve(sub, main, sup, rhs, method=method)
+            return  # Successfully verified the error; no solution to check
+        calculated_x = tridiag.solve(sub, main, sup, rhs, method=method)
     except ImportError as e:
         if "MLX" in str(e):
             pytest.skip("MLX not installed")

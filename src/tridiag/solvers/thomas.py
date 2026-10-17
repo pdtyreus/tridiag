@@ -1,8 +1,12 @@
 """Implementations of Thomas Algorithm solvers."""
 
+from typing import Any
+
 import numpy as np
 import numpy.typing as npt
 from numba import njit, prange
+
+from ..utils import ArrayLike
 
 
 def solve_vanilla(a: npt.NDArray, b: npt.NDArray, c: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
@@ -144,3 +148,91 @@ def solve_numba_batch(
             x[k, i] = dp[i] - cp[i] * x[k, i + 1]
 
     return x
+
+try:
+    import mlx.core as mx
+
+    @mx.compile
+    def _thomas_batch_core(a, b, c, d):
+        """Inner vectorized Thomas loop in pure MLX."""
+        m, n = d.shape
+        is_a_1d = a.ndim == 1
+        is_b_1d = b.ndim == 1
+        is_c_1d = c.ndim == 1
+
+        def get_a(i):
+            return a[i] if is_a_1d else a[:, i]
+
+        def get_b(i):
+            return b[i] if is_b_1d else b[:, i]
+
+        def get_c(i):
+            return c[i] if is_c_1d else c[:, i]
+
+        # Forward Elimination
+        b0 = get_b(0)
+        cp = [get_c(0) / b0]
+        dp = [d[:, 0] / b0]
+
+        for i in range(1, n - 1):
+            den = get_b(i) - get_a(i - 1) * cp[-1]
+            cp.append(get_c(i) / den)
+            dp.append((d[:, i] - get_a(i - 1) * dp[-1]) / den)
+
+        den_last = get_b(n - 1) - get_a(n - 2) * cp[-1]
+        dp.append((d[:, n - 1] - get_a(n - 2) * dp[-1]) / den_last)
+
+        # Back Substitution
+        x_rev = [dp[-1]]
+        for i in range(n - 2, -1, -1):
+            x_prev = dp[i] - cp[i] * x_rev[-1]
+            x_rev.append(x_prev)
+
+        return mx.stack(x_rev[::-1], axis=-1)
+
+    def solve_mlx_batch(
+        a: ArrayLike, b: ArrayLike, c: ArrayLike, d: ArrayLike
+    ) -> Any:
+        """Solve a batch of M independent tridiagonal on Apple silicon.
+        
+        The method uses the Thomas algorithm but parallelizes the work
+        across GPU cores using MLX.
+        
+        Parameters
+        ----------
+        a : ndarray
+            The lower diagonal(s) of shape (M, N - 1) or broadcastable (N - 1,).
+        b : ndarray
+            The main diagonal(s) of shape (M, N) or broadcastable (N,).
+        c : ndarray
+            The upper diagonal(s) of shape (M, N - 1) or broadcastable (N - 1,).
+        d : ndarray
+            The right-hand side matrix of shape (M, N).
+        
+        Returns
+        -------
+        ndarray
+            The solution matrix x of shape (M, N).
+        """
+        if d.dtype in (np.float64, mx.float64):
+            raise TypeError(
+                "MLX solvers require 'float32' for Apple Silicon GPU acceleration. "
+                "Metal GPUs do not support 64-bit floating point (float64).\n"
+                "  - To use the GPU: cast your inputs to float32 (e.g. `d.astype(np.float32)`).\n"
+                "  - To use float64: use the optimized CPU solver (`method='thomas_numba_batch'`)."
+            )
+
+        mx_a = mx.array(a, dtype=mx.float32) if not isinstance(a, mx.array) else a
+        mx_b = mx.array(b, dtype=mx.float32) if not isinstance(b, mx.array) else b
+        mx_c = mx.array(c, dtype=mx.float32) if not isinstance(c, mx.array) else c
+        mx_d = mx.array(d, dtype=mx.float32) if not isinstance(d, mx.array) else d
+
+        return _thomas_batch_core(mx_a, mx_b, mx_c, mx_d)
+
+except ImportError:
+
+    def solve_mlx_batch(
+        a: ArrayLike, b: ArrayLike, c: ArrayLike, d: ArrayLike
+    ) -> Any:
+        """Handle calls to mlx solver when mlx is not installed."""
+        raise ImportError("MLX not found. Please install mlx to use solve_mlx_batch.")
