@@ -6,14 +6,30 @@ import numpy.typing as npt
 try:
     import mlx.core as mx
     MLXArray = mx.array
+    HAS_MLX = True
 except ImportError:
     class MLXArray:  # type: ignore
         """Handle when mlx is not installed."""
         
         pass
+    HAS_MLX = False
 
 ArrayLike = npt.NDArray | MLXArray
 
+
+def moveaxis(arr: ArrayLike, source: int, destination: int) -> ArrayLike:
+    """Move array axis transparently for both NumPy and MLX."""
+    if HAS_MLX:
+        import mlx.core as mx
+        if isinstance(arr, mx.array):
+            return mx.moveaxis(arr, source, destination)
+    return np.moveaxis(arr, source, destination)
+
+def is_float32(arr: ArrayLike) -> bool:
+    """Check if array is float32 for either NumPy or MLX."""
+    if HAS_MLX:
+        return arr.dtype in (np.float32, mx.float32)
+    return arr.dtype == np.float32
 
 def generate_tridiagonal_system(
     n: int, seed: int = 42
