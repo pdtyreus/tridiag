@@ -136,6 +136,13 @@ If you want to contribute or run the benchmarks locally, you can set up the envi
 
    # Include MLX solver
    poetry run python benchmarks/run_benchmarks.py --massive --mlx
+
+   # Batch solver benchmarks
+   poetry run python benchmarks/run_batch_benchmarks.py
+
+   # Batch solvers with MLX
+   poetry run python benchmarks/run_batch_benchmarks.py \
+      --mlx --dtype float32 --massive --shared
    ```
 
 5. **Run Examples:**

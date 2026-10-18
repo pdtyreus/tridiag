@@ -28,7 +28,8 @@ SEQUENTIAL_METHODS = [
 
 BATCH_METHODS = [
     'thomas_numba',
-    'thomas_mlx'
+    'thomas_mlx',
+    'thomas_mlx_metal',
 ]
 
 # Sizes to test: small, medium, and non-power-of-2 for CR padding

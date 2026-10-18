@@ -41,7 +41,7 @@ def solve_sequential(a, b, c, d):
     return x
 
 
-def run_batch_suite(method, n=128, batch_sizes=(10, 100, 1000, 10000, 50000), dtype=np.float64):
+def run_batch_suite(method, n=128, batch_sizes=(10, 100, 1000, 10000, 50000), dtype=np.float64, shared_diagonals=True):
     """Run the batch benchmark suite."""
     dtype_name = np.dtype(dtype).name
     print(f"\nBatch Solver Benchmark (Method={method}, Size N={n}, dtype={dtype_name})")
@@ -52,7 +52,7 @@ def run_batch_suite(method, n=128, batch_sizes=(10, 100, 1000, 10000, 50000), dt
     print("-" * 80)
 
     for m in batch_sizes:
-        sub, main, sup, rhs, _ = generate_tridiagonal_batch_system(m, n, shared_diagonals=True)
+        sub, main, sup, rhs, _ = generate_tridiagonal_batch_system(m, n, shared_diagonals=shared_diagonals)
         sub = sub.astype(dtype)
         main = main.astype(dtype)
         sup = sup.astype(dtype)
@@ -89,6 +89,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Benchmark batch tridiag solvers.")
     parser.add_argument("--size", default=128, help="System size N")
+    parser.add_argument("--shared", action="store_true", help="System has shared diagonals")
     parser.add_argument("--dtype", default="float64", help="dtype (e.g. float32, float64)")
     parser.add_argument("--mlx", action="store_true", help="Include MLX benchmark.")
     parser.add_argument("--massive", action="store_true", help="Run up to N=100M.")
@@ -97,7 +98,7 @@ if __name__ == "__main__":
     methods = ["thomas_numba_batch"]
 
     if args.mlx:
-        methods += ['thomas_mlx_batch']
+        methods += ['thomas_mlx_batch', 'thomas_mlx_metal']
 
     dt = np.dtype(args.dtype)
 

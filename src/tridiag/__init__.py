@@ -48,6 +48,8 @@ def _solve_batch(
         "thomas_numba_batch": thomas.solve_numba_batch,
         "thomas_mlx": thomas.solve_mlx_batch,
         "thomas_mlx_batch": thomas.solve_mlx_batch,
+        "thomas_mlx_metal": thomas.solve_mlx_metal,
+        "thomas_metal": thomas.solve_mlx_metal,
     }
     if method == "auto":
         if (HAS_MLX and is_float32(d)):
@@ -109,6 +111,7 @@ def _solve(
         solvers = {
             "thomas_vanilla": thomas.solve_vanilla,
             "thomas_numba": thomas.solve_numba,
+            "thomas_metal": thomas.solve_mlx_metal,
             "cr_vanilla": cyclic_reduction.solve_vanilla,
             "cr_numpy": cyclic_reduction.solve_numpy,
             "cr_numba": cyclic_reduction.solve_numba,
