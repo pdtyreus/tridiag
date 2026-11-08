@@ -148,4 +148,6 @@ If you want to contribute or run the benchmarks locally, you can set up the envi
 5. **Run Examples:**
    ```bash
    poetry run python examples/heat_conduction_1d.py
+   poetry run python examples/thermal_plume_2d_adi.py
+   poetry run python examples/reaction_diffusion_2d_adi.py
    ```
