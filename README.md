@@ -1,45 +1,66 @@
 # tridiag: High-Performance, Differentiable Tridiagonal Solvers
 
-`tridiag` is a Python library for efficiently solving tridiagonal linear systems ($Ax=d$). It provides a variety of implementations optimized for different architectures and system sizes, from pure Python to Numba-accelerated parallel solvers and natively differentiable, GPU-accelerated MLX solvers for Apple Silicon.
+`tridiag` is a Python library for efficiently solving tridiagonal linear systems ($Ax=d$). It provides a variety of implementations optimized for different architectures and problem scales—from pure Python to Numba-accelerated parallel solvers, multi-dimensional batch solvers, and natively differentiable, GPU-accelerated MLX solvers with custom Metal kernels for Apple Silicon.
 
-To understand the performance of the various implementations across different system sizes and hardware capabilities, see these [tridiagonal solver benchmark results](https://pdtyreus.github.io/numerical_methods/tridiagonal_solvers.html).
+## Benchmarks & Performance Analysis
 
-![](https://pdtyreus.github.io/numerical_methods/tridiagonal/all_impl.png)
+To understand the performance of the various implementations across different system sizes and batch configurations:
+- **Single Systems:** [Tridiagonal Solvers Benchmark](https://pdtyreus.github.io/numerical_methods/tridiagonal_solvers.html)
+- **Batch Systems (Apple Silicon GPU & CPU):** [Tridiagonal Solvers: MLX Batch](https://pdtyreus.github.io/numerical_methods/tridiagonal_mlx_batch.html)
+
+<p align="center">
+  <img src="https://pdtyreus.github.io/numerical_methods/tridiagonal/all_impl.png" alt="Single System Benchmarks" width="48%" />
+  <img src="https://pdtyreus.github.io/numerical_methods/tridiagonal/batch_mlx.png" alt="Batch Benchmarks" width="48%" />
+</p>
 
 ## Key Features
 
 - **Multiple Algorithms:** 
-    - **Thomas Algorithm ([TDMA](https://pdtyreus.github.io/numerical_methods/tridiagonal_thomas.html)):** Efficient sequential solver for small to medium systems.
-    - **Cyclic Reduction ([CR](https://pdtyreus.github.io/numerical_methods/tridiagonal_cyclic_reduction.html)):** Parallelizable solver for large-scale systems.
+    - **Thomas Algorithm ([TDMA](https://pdtyreus.github.io/numerical_methods/tridiagonal_thomas.html)):** Efficient sequential solver for small to medium single systems, and parallelized across batches.
+    - **Cyclic Reduction ([CR](https://pdtyreus.github.io/numerical_methods/tridiagonal_cyclic_reduction.html)):** Parallelizable solver for large-scale single systems.
     - **Parallel Cyclic Reduction ([PCR](https://pdtyreus.github.io/numerical_methods/tridiagonal_parallel_cyclic_reduction.html)):** Massively parallel solver optimized for GPU launch efficiency.
+- **Multidimensional & Batched Solving:**
+    - Solve thousands of systems simultaneously along any dimension (`axis`) for 2D/3D Alternating Direction Implicit (ADI) PDE simulations, splines, and image processing.
+    - Supports both shared (1D) and independent (multidimensional) diagonal coefficients.
 - **Optimized Backends:**
-    - **Numba:** JIT-compiled CPU acceleration with multi-core parallelization.
-    - **MLX:** GPU-accelerated solvers optimized for Apple Silicon.
-- **Smart Dispatch:** Use `method='auto'` to automatically select the best solver for your hardware and problem size.
+    - **Metal Shading Language (MSL):** Custom fused GPU compute kernel (`mx.fast.metal_kernel`) keeping intermediate variables in GPU registers for maximum batch throughput.
+    - **MLX:** GPU-accelerated solvers optimized for Apple Silicon with native reverse-mode automatic differentiation (`mx.grad`).
+    - **Numba:** JIT-compiled CPU acceleration with multi-core parallel execution.
+- **Smart Dispatch:** Automatically selects the best solver based on hardware, array dimensions, dtype, and problem size via `method='auto'`.
 
 ## Performance Guide
 
 Based on benchmarks on Apple Silicon (M5), here is a guide for choosing the right solver:
 
-| System Size (N) | Recommended Method | Why? |
+### 1. Single Systems ($Ax = d$, 1D arrays)
+
+| System Size ($N$) | Recommended Method | Why? |
 | :--- | :--- | :--- |
 | $N < 10,000$ | `thomas_numba` | Lowest overhead, highly efficient sequential JIT code. |
 | $10,000 < N < 1,000,000$ | `cr_numba` | CPU Parallelism (8+ cores) beats sequential Thomas. |
 | $N > 1,000,000$ (float32) | `cr_numba` or `cr_mlx` | CPU/GPU memory bandwidth becomes the bottleneck. |
 
-## Numba vs. MLX: Which to Choose?
+### 2. Batched Systems ($M$ systems along an `axis`, e.g., 2D/3D grids)
 
-While our benchmarks show that **Numba (Parallel CPU)** can be faster for a single massive system due to low-latency cache pre-fetching, there are several scenarios where the **MLX (GPU)** backend is the superior choice:
+| Workload Type | Recommended Method | Why? |
+| :--- | :--- | :--- |
+| Batched Systems (float32, Apple Silicon) | `thomas_metal` | Fused Metal kernel eliminates intermediate global memory round-trips and keeps variables in GPU registers. |
+| Batched Systems (float64 or CPU) | `thomas_numba` | Multi-core parallel execution across CPU threads via Numba `prange`. |
+| Differentiable Batches (Machine Learning) | `thomas_mlx` or `thomas_metal` | Seamless integration with `mx.grad` for neural network layers and inverse PDE problems. |
 
-1.  **Machine Learning Integration:** The MLX implementation is built using native MLX primitives, making it **fully differentiable**. If you are using this solver inside a neural network, you can use `mx.grad` to backpropagate through the solver.
+## Numba vs. MLX / Metal: Which to Choose?
+
+While **Numba (Parallel CPU)** is often faster for a single massive 1D system, the **MLX and Metal (GPU)** backends are the superior choice in several key scenarios:
+
+1. **Large Batches (ADI & Multidimensional Grids):** For 2D/3D simulations requiring thousands of simultaneous tridiagonal solves, the fused Metal GPU kernel (`thomas_metal`) significantly outperforms multi-core CPU solvers by taking advantage of high unified memory bandwidth.
+2. **Machine Learning Integration & Autograd:** MLX solvers are written using native MLX operations and are **fully differentiable**. If you use tridiagonal solvers within neural networks (e.g. implicit layers, spline layers, or physics-informed neural networks), you can directly backpropagate gradients using `mx.grad`.
+3. **Data Locality:** If tensors already reside on the GPU from upstream MLX operations, using MLX/Metal avoids expensive GPU-CPU memory copies.
+4. **Graph Fusion:** MLX's lazy evaluation allows the compiler to fuse the tridiagonal solve with surrounding operations.
 
 ### Differentiable Solvers Example
 
-Because the MLX solvers are written using native MLX operations, they are fully compatible with autograd. You can easily backpropagate through the solver:
-
 ```python
 import mlx.core as mx
-import numpy as np
 import tridiag
 
 # Create arrays
@@ -59,15 +80,12 @@ def loss_fn(b_val):
 grad_b = mx.grad(loss_fn)(b)
 print("Gradient computed successfully:", grad_b.shape)
 ```
-2.  **Data Locality:** If your tensors are already on the GPU from a previous MLX operation, using the MLX solver avoids the expensive synchronization and conversion costs required to move data back to the CPU for Numba.
-3.  **Graph Fusion:** MLX's lazy evaluation allows the compiler to "fuse" the tridiagonal solve with surrounding operations (like activations or subsequent matrix math), potentially optimizing the entire execution pipeline.
 
 ## Important Note on Precision (float32 vs float64)
 
 Apple Silicon GPUs **do not natively support float64** (Double Precision). 
-*   **Recommendation:** Use `float32` for maximum performance on MLX.
-*   **Fallback:** If you use `float64` with MLX backends, the library will automatically switch to the CPU stream, which is significantly slower.
-*   **Better Alternative:** For high-precision `float64` needs, the `cr_numba` or `thomas_numba` methods are highly optimized for the CPU and will outperform the MLX fallback.
+* Use `float32` for maximum performance on MLX and Metal.
+* For high-precision `float64` needs, use `cr_numba` (single system) or `thomas_numba` (batch), which are heavily optimized for multi-core CPUs.
 
 ## Installation
 
@@ -78,23 +96,42 @@ pip install tridiag
 # Installation with GPU support (Apple Silicon)
 pip install "tridiag[gpu]"
 ```
-*(Requires `numpy` and `numba`. For GPU acceleration, `mlx` is required.)*
 
 ## Quick Start
 
+### Single System
+
 ```python
 import tridiag
-import numpy as np
 from tridiag.utils import generate_tridiagonal_system
 
-# Create a tridiagonal system
+# Create a single tridiagonal system (N = 1023)
 n = 1023
 a, b, c, d, _ = generate_tridiagonal_system(n)
 
-# Solve using the smart auto-dispatcher
+# Solve using smart auto-dispatch
 x = tridiag.solve(a, b, c, d, method='auto')
-
 print(f"Solution size: {len(x)}")
+```
+
+### Batched & Multidimensional Systems
+
+```python
+import numpy as np
+import tridiag
+
+# Solve a batch of 1,000 systems of size N = 256
+batch_size, n = 1000, 256
+a = np.random.uniform(-1, 0, (n - 1,)).astype(np.float32)
+b = np.random.uniform(2, 3, (n,)).astype(np.float32)
+c = np.random.uniform(-1, 0, (n - 1,)).astype(np.float32)
+d = np.random.uniform(0, 1, (batch_size, n)).astype(np.float32)
+
+# Solve along axis=-1 using auto-dispatch (routes to MLX on Apple Silicon)
+x = tridiag.solve(a, b, c, d, axis=-1, method='auto')
+
+# Or explicitly use the high-performance Metal GPU kernel:
+x_metal = tridiag.solve(a, b, c, d, axis=-1, method='thomas_metal')
 ```
 
 ## Advanced Usage
@@ -102,14 +139,33 @@ print(f"Solution size: {len(x)}")
 Explicitly choose a solver:
 
 ```python
+# Single system solvers:
 x_numba = tridiag.solve(a, b, c, d, method='cr_numba')
 x_pcr   = tridiag.solve(a, b, c, d, method='pcr_mlx')
 x_seq   = tridiag.solve(a, b, c, d, method='thomas_numba')
+
+# Batch solvers:
+x_metal = tridiag.solve(a, b, c, d_batch, axis=-1, method='thomas_metal')  # Metal GPU kernel
+x_mlx   = tridiag.solve(a, b, c, d_batch, axis=-1, method='thomas_mlx')    # Pure MLX GPU
+x_cpu   = tridiag.solve(a, b, c, d_batch, axis=-1, method='thomas_numba')  # Multi-core CPU
 ```
+
+## Application Examples
+
+The repository includes complete scientific simulation examples:
+
+- **[2D Thermal Plume Simulation (`examples/thermal_plume_2d_adi.py`)](examples/thermal_plume_2d_adi.py):**
+  Simulates advection-diffusion of heat from an off-center continuous heat source in laminar channel flow using the Peaceman-Rachford Alternating Direction Implicit (ADI) scheme. Demonstrates solving non-symmetric tridiagonal systems ($a \ne c$) in alternating horizontal (`axis=1`) and vertical (`axis=0`) batched sweeps.
+
+- **[2D Reaction-Diffusion & Turing Patterns (`examples/reaction_diffusion_2d_adi.py`)](examples/reaction_diffusion_2d_adi.py):**
+  Simulates the coupled non-linear Gray-Scott equations to model morphogenetic Turing pattern formation (solitons, spots, branching rings, and labyrinths) across a spatial feed gradient, solved via batched ADI sweeps with zero-flux Neumann boundary conditions.
+
+- **[1D Heat Conduction (`examples/heat_conduction_1d.py` / `examples/heat_conduction_mlx.py`)](examples/heat_conduction_1d.py):**
+  Classic 1D transient heat diffusion using Crank-Nicolson implicit time stepping, comparing CPU and MLX differentiable solves.
 
 ## Development
 
-If you want to contribute or run the benchmarks locally, you can set up the environment using `poetry`:
+If you want to run benchmarks locally, you can set up the environment using `poetry`:
 
 1. **Install dependencies:**
    ```bash
@@ -128,10 +184,10 @@ If you want to contribute or run the benchmarks locally, you can set up the envi
 
 4. **Run benchmarks:**
    ```bash
-   # Standard benchmark (compares against SciPy baseline)
+   # Standard single-system benchmark (compares against SciPy baseline)
    poetry run python benchmarks/run_benchmarks.py
 
-   # Massive systems (up to N=134M)
+   # Massive single systems (up to N=134M)
    poetry run python benchmarks/run_benchmarks.py --massive
 
    # Include MLX solver
@@ -140,14 +196,14 @@ If you want to contribute or run the benchmarks locally, you can set up the envi
    # Batch solver benchmarks
    poetry run python benchmarks/run_batch_benchmarks.py
 
-   # Batch solvers with MLX
+   # Batch solvers with MLX & Metal (Apple Silicon)
    poetry run python benchmarks/run_batch_benchmarks.py \
       --mlx --dtype float32 --massive --shared
    ```
 
 5. **Run Examples:**
    ```bash
-   poetry run python examples/heat_conduction_1d.py
    poetry run python examples/thermal_plume_2d_adi.py
    poetry run python examples/reaction_diffusion_2d_adi.py
+   poetry run python examples/heat_conduction_1d.py
    ```
